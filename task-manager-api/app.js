@@ -193,6 +193,67 @@ app.delete("/tasks/:id", auth, async (req, res, next) => {
     }
 });
 
+
+// ==========================================
+// PRACTICAL 13: AI-POWERED DESCRIPTION GENERATOR
+// ==========================================
+app.post("/api/ai/generate-description", auth, async (req, res) => {
+    try {
+        const { title } = req.body;
+
+        if (!title || !title.trim()) {
+            return res.status(400).json({ error: "Task title is required" });
+        }
+
+        const apiKey = process.env.GEMINI_API_KEY;
+
+        // Graceful fallback if no API key configured
+        if (!apiKey) {
+            return res.status(200).json({
+                description: `Complete all objectives for "${title.trim()}" on schedule.`,
+                fallback: true,
+                note: "API key not configured - using template fallback"
+            });
+        }
+
+        // Call Google Gemini API
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+        const aiResponse = await fetch(geminiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                contents: [{
+                    parts: [{
+                        text: `Write a short, professional, 1 to 2 sentence task description for a task titled "${title.trim()}". Return only the description text, no quotes.`
+                    }]
+                }]
+            })
+        });
+
+        const data = await aiResponse.json();
+
+        if (!aiResponse.ok) {
+            throw new Error(data.error?.message || "Gemini API request failed");
+        }
+
+        const generatedText =
+            data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "";
+
+        return res.status(200).json({
+            description: generatedText,
+            fallback: false
+        });
+    } catch (err) {
+        console.error("AI Generation Error:", err.message);
+        // Graceful degradation - never crash the server
+        return res.status(200).json({
+            description: `Review and complete: "${req.body.title || "this task"}".`,
+            fallback: true,
+            error: err.message
+        });
+    }
+});
 // Health check
 app.get("/health", (req, res) => {
     return res.status(200).json({

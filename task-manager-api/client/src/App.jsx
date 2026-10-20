@@ -8,7 +8,8 @@ import {
     updateTask,
     deleteTask,
     registerUser,
-    loginUser
+    loginUser,
+    generateTaskDescription
 } from "./api";
 
 const Projects = lazy(() => import("./pages/Projects"));
@@ -27,6 +28,8 @@ function App() {
     const [description, setDescription] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+    const [aiFallback, setAiFallback] = useState(false);
 
     const isAuthenticated = Boolean(token);
 
@@ -105,8 +108,33 @@ function App() {
             setTasks((prev) => [...prev, newTask]);
             setTitle("");
             setDescription("");
+            setAiFallback(false);
         } catch (err) {
             setError(err.message);
+        }
+    };
+
+    const handleGenerateAI = async () => {
+        if (!title.trim()) {
+            setError("Enter a task title first to generate an AI description.");
+            return;
+        }
+
+        try {
+            setIsGeneratingAI(true);
+            setError("");
+            setAiFallback(false);
+            const data = await generateTaskDescription(title);
+            if (data.description) {
+                setDescription(data.description);
+            }
+            if (data.fallback) {
+                setAiFallback(true);
+            }
+        } catch (err) {
+            setError(err.message || "Failed to generate AI suggestion");
+        } finally {
+            setIsGeneratingAI(false);
         }
     };
 
@@ -146,10 +174,12 @@ function App() {
         }
     };
 
+    // ========== AUTH SCREEN ==========
     if (!isAuthenticated) {
         return (
             <div className="auth-screen">
                 <div className="auth-card">
+                    <div className="auth-logo">&#9744;</div>
                     <h1>
                         {authMode === "login"
                             ? "Welcome back"
@@ -202,11 +232,11 @@ function App() {
 
                         <button
                             type="submit"
-                            className="add-btn auth-btn"
+                            className="btn-primary auth-btn"
                         >
                             {authMode === "login"
-                                ? "Login"
-                                : "Register"}
+                                ? "Sign In"
+                                : "Create Account"}
                         </button>
                     </form>
 
@@ -240,6 +270,10 @@ function App() {
             </div>
         );
     }
+
+    // ========== MAIN APP ==========
+    const completedCount = tasks.filter(t => t.completed).length;
+    const pendingCount = tasks.length - completedCount;
 
     return (
         <BrowserRouter>
@@ -293,6 +327,22 @@ function App() {
                                         </button>
                                     </header>
 
+                                    {/* Stats Bar */}
+                                    <div className="stats-bar">
+                                        <div className="stat-item">
+                                            <span className="stat-number">{tasks.length}</span>
+                                            <span className="stat-label">Total</span>
+                                        </div>
+                                        <div className="stat-item">
+                                            <span className="stat-number stat-pending">{pendingCount}</span>
+                                            <span className="stat-label">Pending</span>
+                                        </div>
+                                        <div className="stat-item">
+                                            <span className="stat-number stat-done">{completedCount}</span>
+                                            <span className="stat-label">Done</span>
+                                        </div>
+                                    </div>
+
                                     <section className="form-card">
                                         <h2>Add a new task</h2>
 
@@ -309,19 +359,40 @@ function App() {
                                                 }
                                             />
 
-                                            <input
-                                                type="text"
-                                                placeholder="Description"
-                                                value={description}
-                                                onChange={(e) =>
-                                                    setDescription(
-                                                        e.target.value
-                                                    )
-                                                }
-                                            />
+                                            <div className="description-row">
+                                                <input
+                                                    type="text"
+                                                    placeholder="Description (or use AI below)"
+                                                    value={description}
+                                                    onChange={(e) =>
+                                                        setDescription(
+                                                            e.target.value
+                                                        )
+                                                    }
+                                                />
+                                                <button
+                                                    type="button"
+                                                    className="ai-btn"
+                                                    onClick={handleGenerateAI}
+                                                    disabled={isGeneratingAI || !title.trim()}
+                                                    title="Generate description with Gemini AI"
+                                                >
+                                                    {isGeneratingAI ? "Generating..." : "AI Suggest"}
+                                                </button>
+                                            </div>
+
+                                            {aiFallback && (
+                                                <p className="ai-note">
+                                                    Note: Used fallback template. Check API key configuration.
+                                                </p>
+                                            )}
+
+                                            <p className="ai-disclaimer">
+                                                AI-generated suggestions should be reviewed before use.
+                                            </p>
 
                                             <button
-                                                className="add-btn"
+                                                className="btn-primary"
                                                 type="submit"
                                             >
                                                 Add Task
@@ -351,7 +422,7 @@ function App() {
 
                                     {tasks.length === 0 && !loading && (
                                         <div className="empty">
-                                            No tasks found.
+                                            No tasks found. Create your first task above!
                                         </div>
                                     )}
 
